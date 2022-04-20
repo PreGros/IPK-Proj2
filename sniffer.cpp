@@ -77,6 +77,8 @@ main (int argc, char **argv)
           abort ();
         }
     }
+    
+    printf ("Testovaci git");
 
   exit (0);
 }
