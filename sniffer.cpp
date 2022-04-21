@@ -7,6 +7,19 @@
 // potřeba u překladu použít flag -lpcap https://askubuntu.com/questions/582042/problem-linking-against-pcap-h
 // základní sniffer https://www.tcpdump.org/pcap.html
 
+/* Pomocná struktura pro uchování příznaků */
+struct Flags
+  {
+    bool interface = true;
+    bool port = false;
+    bool tcp = false;
+    bool udp = false;
+    bool arp = false;
+    bool icmp = false;
+    int packetcount = 0;
+  };
+
+
 /* Makro pro rozeznání optional argumentu převzané z https://cfengine.com/blog/2021/optional-arguments-with-getopt-long/ */
 #define OPTIONAL_ARGUMENT_IS_PRESENT \
     ((optarg == NULL && optind < argc && argv[optind][0] != '-') \
@@ -16,14 +29,7 @@
 int
 main (int argc, char **argv)
 {
-  bool interface = true;
-  // bool port = false;
-  // bool tcp = false;
-  // bool udp = false;
-  // bool arp = false;
-  // bool icmp = false;
-  // int packetcount = 0;
-
+  struct Flags flags;
   int c;
 
   while (1)
@@ -51,9 +57,9 @@ main (int argc, char **argv)
         {
         case 'i': // interface
             if (OPTIONAL_ARGUMENT_IS_PRESENT)
-                interface = false;
+                flags.interface = false;
               else
-                interface = true;
+                flags.interface = true;
             break;
 
         case 'p': // port
@@ -86,7 +92,7 @@ main (int argc, char **argv)
     }
 
     /* Vypsání dostupných interface možností */
-    if (interface)
+    if (flags.interface)
     {
       char errbuff[PCAP_ERRBUF_SIZE];
       pcap_if_t *interface;
@@ -102,8 +108,12 @@ main (int argc, char **argv)
         printf("\t%s\n", interface->name);
         interface = interface->next;
       } while (interface != NULL);
+
       pcap_freealldevs(interface);
+      exit(0);
     }
+
+
 
   exit (0);
 }
