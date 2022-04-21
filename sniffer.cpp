@@ -3,6 +3,9 @@
 #include <getopt.h>
 #include <pcap/pcap.h>
 #include <string>
+#include <iostream>
+
+using namespace std;
 
 // potřeba u překladu použít flag -lpcap https://askubuntu.com/questions/582042/problem-linking-against-pcap-h
 // základní sniffer https://www.tcpdump.org/pcap.html
@@ -11,6 +14,7 @@
 struct Flags
   {
     bool interface = true;
+    std::string interface_arg;
     bool port = false;
     bool tcp = false;
     bool udp = false;
@@ -57,9 +61,10 @@ main (int argc, char **argv)
         {
         case 'i': // interface
             if (OPTIONAL_ARGUMENT_IS_PRESENT)
-                flags.interface = false;
-              else
-                flags.interface = true;
+            {
+              flags.interface = false;
+              flags.interface_arg = optarg;
+            }
             break;
 
         case 'p': // port
@@ -113,7 +118,7 @@ main (int argc, char **argv)
       exit(0);
     }
 
-
+    std::cout << flags.interface_arg << "\n";
 
   exit (0);
 }
