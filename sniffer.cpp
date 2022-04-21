@@ -4,6 +4,9 @@
 #include <pcap/pcap.h>
 #include <string>
 
+// potřeba u překladu použít flag -lpcap https://askubuntu.com/questions/582042/problem-linking-against-pcap-h
+// základní sniffer https://www.tcpdump.org/pcap.html
+
 /* Makro pro rozeznání optional argumentu převzané z https://cfengine.com/blog/2021/optional-arguments-with-getopt-long/ */
 #define OPTIONAL_ARGUMENT_IS_PRESENT \
     ((optarg == NULL && optind < argc && argv[optind][0] != '-') \
@@ -99,6 +102,7 @@ main (int argc, char **argv)
         printf("\t%s\n", interface->name);
         interface = interface->next;
       } while (interface != NULL);
+      pcap_freealldevs(interface);
     }
 
   exit (0);
