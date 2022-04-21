@@ -30,7 +30,7 @@ struct Flags
      ? (bool) (optarg = argv[optind++]) \
      : (optarg != NULL))
 
-/* Funkce pro vypsání dostupných rozhraní nebo pro kontrolu vloženého argumentu */
+/* Funkce pro vypsání dostupných rozhranní nebo pro kontrolu vloženého argumentu */
 bool checkInt(Flags flags)
 {
   char errbuff[PCAP_ERRBUF_SIZE];
@@ -43,6 +43,8 @@ bool checkInt(Flags flags)
     exit(0);
   }
 
+  pcap_if_t *temp = interface; // pro vyčištění celého vázaného listu 
+
   /* Vypsání dostupných interface možností */
   if (flags.interface)
   {
@@ -52,7 +54,7 @@ bool checkInt(Flags flags)
       interface = interface->next;
     } while (interface != NULL);
 
-    pcap_freealldevs(interface);
+    pcap_freealldevs(temp);
     exit(0);
   }
 
@@ -61,13 +63,13 @@ bool checkInt(Flags flags)
   {
     if (flags.interface_arg == interface->name) // pokud najde shodu, argument je správně
     {
-      pcap_freealldevs(interface);
+      pcap_freealldevs(temp);
       return false;
     }
     interface = interface->next;
   } while (interface != NULL);
 
-  pcap_freealldevs(interface);
+  pcap_freealldevs(temp);
   return true;
 }
 
@@ -138,7 +140,7 @@ int main (int argc, char **argv)
 
   if (checkInt(flags)) // výpis/kontrola rozhránní
   {
-    printf ("Zadaný argument není platným rozhraním!\n");
+    printf ("Zadaný argument není platným rozhranním!\n");
     exit(0);
   }
 
