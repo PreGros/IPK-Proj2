@@ -30,8 +30,48 @@ struct Flags
      ? (bool) (optarg = argv[optind++]) \
      : (optarg != NULL))
 
-int
-main (int argc, char **argv)
+/* Funkce pro vypsání dostupných rozhraní nebo pro kontrolu vloženého argumentu */
+bool checkInt(Flags flags)
+{
+  char errbuff[PCAP_ERRBUF_SIZE];
+  pcap_if_t *interface;
+
+  /* Nalezení a kontrola existence interface */
+  if(pcap_findalldevs(&interface, errbuff) == PCAP_ERROR)
+  {
+    printf ("Nebyl nalezen žádný interface!\n");
+    exit(0);
+  }
+
+  /* Vypsání dostupných interface možností */
+  if (flags.interface)
+  {
+    do
+    {
+      printf("\t%s\n", interface->name);
+      interface = interface->next;
+    } while (interface != NULL);
+
+    pcap_freealldevs(interface);
+    exit(0);
+  }
+
+  // Kontrola vloženého argumentu
+  do
+  {
+    if (flags.interface_arg == interface->name) // pokud najde shodu, argument je správně
+    {
+      pcap_freealldevs(interface);
+      return false;
+    }
+    interface = interface->next;
+  } while (interface != NULL);
+
+  pcap_freealldevs(interface);
+  return true;
+}
+
+int main (int argc, char **argv)
 {
   struct Flags flags;
   int c;
@@ -43,7 +83,7 @@ main (int argc, char **argv)
           {"interface", optional_argument, 0, 'i'},
           {"port",  no_argument,       0, 'p'},
           {"tcp",  no_argument, 0, 't'},
-          {"udp",  optional_argument, 0, 'u'},
+          {"udp",  no_argument, 0, 'u'},
           {"arp",    no_argument, 0, 'a'},
           {"icmp",    no_argument, 0, 'c'},
           {0, 0, 0, 0}
@@ -96,29 +136,13 @@ main (int argc, char **argv)
         }
     }
 
-    /* Vypsání dostupných interface možností */
-    if (flags.interface)
-    {
-      char errbuff[PCAP_ERRBUF_SIZE];
-      pcap_if_t *interface;
+  if (checkInt(flags)) // výpis/kontrola rozhránní
+  {
+    printf ("Zadaný argument není platným rozhraním!\n");
+    exit(0);
+  }
 
-      if(pcap_findalldevs(&interface, errbuff) == PCAP_ERROR)
-      {
-        printf ("Nebyl nalezen žádný interface!\n");
-        exit(0);
-      }
+    
 
-      do
-      {
-        printf("\t%s\n", interface->name);
-        interface = interface->next;
-      } while (interface != NULL);
 
-      pcap_freealldevs(interface);
-      exit(0);
-    }
-
-    std::cout << flags.interface_arg << "\n";
-
-  exit (0);
 }
