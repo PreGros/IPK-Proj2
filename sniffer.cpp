@@ -1,8 +1,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <getopt.h>
+#include <pcap/pcap.h>
+#include <string>
 
-/* Funkce pro rozeznání optional argumentu převzaná z https://cfengine.com/blog/2021/optional-arguments-with-getopt-long/ */
+/* Makro pro rozeznání optional argumentu převzané z https://cfengine.com/blog/2021/optional-arguments-with-getopt-long/ */
 #define OPTIONAL_ARGUMENT_IS_PRESENT \
     ((optarg == NULL && optind < argc && argv[optind][0] != '-') \
      ? (bool) (optarg = argv[optind++]) \
@@ -11,8 +13,14 @@
 int
 main (int argc, char **argv)
 {
+  bool interface = true;
+  // bool port = false;
+  // bool tcp = false;
+  // bool udp = false;
+  // bool arp = false;
+  // bool icmp = false;
+  // int packetcount = 0;
 
-    
   int c;
 
   while (1)
@@ -40,13 +48,9 @@ main (int argc, char **argv)
         {
         case 'i': // interface
             if (OPTIONAL_ARGUMENT_IS_PRESENT)
-            {
-                printf ("Interface s argumentem\n");
-            }
-            else
-            {
-                printf ("Interface bez argumentu\n");
-            }
+                interface = false;
+              else
+                interface = true;
             break;
 
         case 'p': // port
@@ -77,8 +81,25 @@ main (int argc, char **argv)
           abort ();
         }
     }
-    
-    printf ("Testovaci git");
+
+    /* Vypsání dostupných interface možností */
+    if (interface)
+    {
+      char errbuff[PCAP_ERRBUF_SIZE];
+      pcap_if_t *interface;
+
+      if(pcap_findalldevs(&interface, errbuff) == PCAP_ERROR)
+      {
+        printf ("Nebyl nalezen žádný interface!\n");
+        exit(0);
+      }
+
+      do
+      {
+        printf("\t%s\n", interface->name);
+        interface = interface->next;
+      } while (interface != NULL);
+    }
 
   exit (0);
 }
