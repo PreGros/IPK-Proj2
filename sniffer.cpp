@@ -78,6 +78,7 @@ int main (int argc, char **argv)
   struct Flags flags;
   int c;
 
+  /* Vstupní argumenty */
   while (1)
     {
       static struct option long_options[] =
@@ -140,11 +141,19 @@ int main (int argc, char **argv)
 
   if (checkInt(flags)) // výpis/kontrola rozhránní
   {
-    printf ("Zadaný argument není platným rozhranním!\n");
+    printf ("Zadaný argument není platným rozhraním!\n");
     exit(0);
   }
 
-    
+  char errbuf[PCAP_ERRBUF_SIZE];
+  pcap_t *handle;
 
+  /* Vytváření sniffing session */
+  handle = pcap_open_live(flags.interface_arg.c_str(), BUFSIZ, 1, 1000, errbuf);
+  if (handle == NULL)
+  {
+    printf ("Nepodařilo se otevřít dané rozhraní\n");
+    exit(0);
+  }
 
 }
