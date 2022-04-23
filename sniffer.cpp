@@ -4,6 +4,11 @@
 #include <pcap/pcap.h>
 #include <string>
 #include <iostream>
+#include <arpa/inet.h>
+#include <netinet/ether.h>
+#include <netinet/ip6.h>
+#include <netinet/tcp.h>
+#include <netinet/ip_icmp.h>
 
 using namespace std;
 
@@ -72,6 +77,12 @@ bool checkInt(Flags flags)
   pcap_freealldevs(temp);
   return true;
 }
+
+// std::string determine_filter(Flags *flags)
+// {
+//   std::string expression = "";
+//   return expression;
+// }
 
 int main (int argc, char **argv)
 {
@@ -145,15 +156,100 @@ int main (int argc, char **argv)
     exit(0);
   }
 
-  char errbuf[PCAP_ERRBUF_SIZE];
-  pcap_t *handle;
+  // char errbuf[PCAP_ERRBUF_SIZE];
+  // pcap_t *handle;
 
-  /* Vytváření sniffing session */
-  handle = pcap_open_live(flags.interface_arg.c_str(), BUFSIZ, 1, 1000, errbuf);
-  if (handle == NULL)
-  {
-    printf ("Nepodařilo se otevřít dané rozhraní\n");
-    exit(0);
-  }
+  // /* Vytváření sniffing session */
+  // handle = pcap_open_live(flags.interface_arg.c_str(), BUFSIZ, 1, 1000, errbuf);
+  // if (handle == NULL)
+  // {
+  //   printf ("Nepodařilo se otevřít dané rozhraní %s\n", flags.interface_arg.c_str());
+  //   exit(0);
+  // }
+
+  // //-------------------------
+
+  // if (pcap_datalink(handle) != DLT_EN10MB)
+  // {
+  //   printf ("Zařízení nepodporuje ethernetové hlavičky");
+  //   exit(0);
+  // }
+
+  // struct bpf_program fp;		/* The compiled filter expression */
+  // std::string filter_exp = "port 23"; //determine_filter(&flags);	/* The filter expression */
+  // bpf_u_int32 mask;		/* The netmask of our sniffing device */
+  // bpf_u_int32 net;		/* The IP of our sniffing device */
+  // struct pcap_pkthdr header;
+	// const u_char *packet;
+
+  // if (pcap_lookupnet(flags.interface_arg.c_str(), &net, &mask, errbuf) == -1) // TODO: no chyba?
+  // {
+  //   printf ("Pro dané rozhraní se nepodařilo získat síťovou masku\n");
+  //   net = 0;
+  //   mask = 0;
+  // }
+
+  // if (pcap_compile(handle, &fp, filter_exp.c_str(), 0, net) == -1)
+  // {
+  //   printf ("Nepodařilo se zkompilovat filter\n");
+  //   exit(0);
+  // }
+  // if (pcap_setfilter(handle, &fp) == -1)
+  // {
+  //   printf ("Nepodařilo se aplikovat filter\n");
+  //   exit(0);
+  // }
+
+  
+
+  // /* Grab a packet */
+	// packet = pcap_next(handle, &header);
+	// /* Print its length */
+	// printf("Jacked a packet with length of [%d]\n", header.len);
+	// /* And close the session */
+	// pcap_close(handle);
+
+  // printf ("Ahoj\n");
+
+  // void got_packet(u_char *args, const struct pcap_pkthdr *header,
+  //   const u_char *packet);
+
+  pcap_t *handle;			/* Session handle */
+	char errbuf[PCAP_ERRBUF_SIZE];	/* Error string */
+	struct bpf_program fp;		/* The compiled filter */
+	char filter_exp[] = "udp";	/* The filter expression */
+	bpf_u_int32 mask;		/* Our netmask */
+	bpf_u_int32 net;		/* Our IP */
+	struct pcap_pkthdr header;	/* The header that pcap gives us */
+	const u_char *packet;		/* The actual packet */
+
+	/* Find the properties for the device */
+	if (pcap_lookupnet(flags.interface_arg.c_str(), &net, &mask, errbuf) == -1) {
+		fprintf(stderr, "Couldn't get netmask for device %s: %s\n", flags.interface_arg.c_str(), errbuf);
+		net = 0;
+		mask = 0;
+	}
+	/* Open the session in promiscuous mode */
+	handle = pcap_open_live(flags.interface_arg.c_str(), BUFSIZ, 1, 1000, errbuf);
+	if (handle == NULL) {
+		fprintf(stderr, "Couldn't open device %s: %s\n", flags.interface_arg.c_str(), errbuf);
+		exit(0);
+	}
+	/* Compile and apply the filter */
+	if (pcap_compile(handle, &fp, filter_exp, 0, net) == -1) {
+		fprintf(stderr, "Couldn't parse filter %s: %s\n", filter_exp, pcap_geterr(handle));
+		exit(0);
+	}
+	if (pcap_setfilter(handle, &fp) == -1) {
+		fprintf(stderr, "Couldn't install filter %s: %s\n", filter_exp, pcap_geterr(handle));
+		exit(0);
+	}
+	/* Grab a packet */
+	packet = pcap_next(handle, &header);
+	/* Print its length */
+	printf("Jacked a packet with length of [%d]\n", header.len);
+	/* And close the session */
+	pcap_close(handle);
+
 
 }
