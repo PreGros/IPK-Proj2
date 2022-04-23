@@ -9,6 +9,7 @@
 #include <netinet/ip6.h>
 #include <netinet/tcp.h>
 #include <netinet/ip_icmp.h>
+#include <sys/time.h>
 
 using namespace std;
 
@@ -242,9 +243,20 @@ int main (int argc, char **argv)
 
   /* Grab a packet */
 	packet = pcap_next(handle, &header);
+
+  char res[64];
+
+  struct tm * timeinfo;
+
+  timeinfo = gmtime (&header.ts.tv_sec);
+
+  strftime(res, sizeof(res), "%a %b %d %Y", timeinfo);
+
 	/* Print its length */
-	printf("Jacked a packet with length of [%d]\n", header.len);
+	printf ("%s", res);
 	/* And close the session */
 	pcap_close(handle);
+
+  struct tm lt;
 
 }
