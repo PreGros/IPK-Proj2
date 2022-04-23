@@ -20,7 +20,7 @@ struct Flags
   {
     bool interface = true;
     std::string interface_arg;
-    bool port = false;
+    int port = -1;
     bool tcp = false;
     bool udp = false;
     bool arp = false;
@@ -78,11 +78,49 @@ bool checkInt(Flags flags)
   return true;
 }
 
-// std::string determine_filter(Flags *flags)
-// {
-//   std::string expression = "";
-//   return expression;
-// }
+std::string determine_filter(Flags *flags)
+{
+  std::string expression = "";
+
+  if (flags->port != -1) // port je zadán
+  {
+    if (flags->tcp == true && flags->udp == true)
+      expression = "(udp and port " + std::to_string(flags->port) + ") or (tcp and port " + std::to_string(flags->port) + ")"; // udp and port X OR tcp and port X
+    else if (flags->tcp == true)
+      expression = "(tcp and port " + std::to_string(flags->port) + ")";
+    else if (flags->udp == true)
+      expression = "(udp and port " + std::to_string(flags->port) + ")";
+    else
+      expression = "port " + std::to_string(flags->port);
+  }
+  else // port není zadán
+  {
+    if (flags->tcp == true && flags->udp == true)
+      expression = "udp or tcp";
+    else if (flags->tcp == true)
+      expression = "tcp";
+    else if (flags->udp == true)
+      expression = "udp";
+  }
+  
+  if (expression != "" && (flags->arp == true || flags->icmp == true))
+    expression += " or ";
+  
+  if (flags->arp == true && flags->icmp == true)
+      expression += "arp or icmp or icmp6";
+    else if (flags->arp == true)
+      expression += "arp";
+    else if (flags->icmp == true)
+      expression += "icmp or icmp6";
+
+  if (expression == "")
+  {
+    printf ("Nezadaný žádný filtr\n");
+    exit(0);
+  }
+
+  return expression;
+}
 
 int main (int argc, char **argv)
 {
@@ -95,7 +133,7 @@ int main (int argc, char **argv)
       static struct option long_options[] =
         {
           {"interface", optional_argument, 0, 'i'},
-          {"port",  no_argument,       0, 'p'},
+          {"port",  required_argument, 0, 'p'},
           {"tcp",  no_argument, 0, 't'},
           {"udp",  no_argument, 0, 'u'},
           {"arp",    no_argument, 0, 'a'},
@@ -122,27 +160,27 @@ int main (int argc, char **argv)
             break;
 
         case 'p': // port
-            printf ("Vypsal jsi port!\n");
+            flags.port = atoi(optarg);
             break;
 
         case 't': // tcp
-            printf ("Vypsal jsi tcp!\n");
+            flags.tcp = true;
             break;
 
         case 'u': // udp
-            printf ("Vypsal jsi udp!\n");
+            flags.udp = true;
             break;
 
         case 'a': // arp
-            printf ("Vypsal jsi arp!\n");
+            flags.arp = true;
             break;
 
         case 'c': // icmp
-            printf ("Vypsal jsi icmp!\n");
+            flags.icmp = true;
             break;
 
         case 'n': // počet paketů
-            printf ("Vypsal jsi počet paketů!\n");
+            flags.packetcount = atoi(optarg);
             break;
 
         default:
@@ -156,100 +194,57 @@ int main (int argc, char **argv)
     exit(0);
   }
 
-  // char errbuf[PCAP_ERRBUF_SIZE];
-  // pcap_t *handle;
+  char errbuf[PCAP_ERRBUF_SIZE];
+  pcap_t *handle;
 
-  // /* Vytváření sniffing session */
-  // handle = pcap_open_live(flags.interface_arg.c_str(), BUFSIZ, 1, 1000, errbuf);
-  // if (handle == NULL)
-  // {
-  //   printf ("Nepodařilo se otevřít dané rozhraní %s\n", flags.interface_arg.c_str());
-  //   exit(0);
-  // }
+  /* Vytváření sniffing session */
+  handle = pcap_open_live(flags.interface_arg.c_str(), BUFSIZ, 1, 1000, errbuf);
+  if (handle == NULL)
+  {
+    printf ("Nepodařilo se otevřít dané rozhraní %s\n", flags.interface_arg.c_str());
+    exit(0);
+  }
 
-  // //-------------------------
+  //-------------------------
 
-  // if (pcap_datalink(handle) != DLT_EN10MB)
-  // {
-  //   printf ("Zařízení nepodporuje ethernetové hlavičky");
-  //   exit(0);
-  // }
+  if (pcap_datalink(handle) != DLT_EN10MB)
+  {
+    printf ("Zařízení nepodporuje ethernetové hlavičky");
+    exit(0);
+  }
 
-  // struct bpf_program fp;		/* The compiled filter expression */
-  // std::string filter_exp = "port 23"; //determine_filter(&flags);	/* The filter expression */
-  // bpf_u_int32 mask;		/* The netmask of our sniffing device */
-  // bpf_u_int32 net;		/* The IP of our sniffing device */
-  // struct pcap_pkthdr header;
-	// const u_char *packet;
+  struct bpf_program fp;		/* The compiled filter expression */
+  std::string filter_exp = determine_filter(&flags); //determine_filter(&flags);	/* The filter expression */
+  bpf_u_int32 mask;		/* The netmask of our sniffing device */
+  bpf_u_int32 net;		/* The IP of our sniffing device */
+  struct pcap_pkthdr header;
+	const u_char *packet;
 
-  // if (pcap_lookupnet(flags.interface_arg.c_str(), &net, &mask, errbuf) == -1) // TODO: no chyba?
-  // {
-  //   printf ("Pro dané rozhraní se nepodařilo získat síťovou masku\n");
-  //   net = 0;
-  //   mask = 0;
-  // }
+  if (pcap_lookupnet(flags.interface_arg.c_str(), &net, &mask, errbuf) == -1) // TODO: no chyba?
+  {
+    printf ("Pro dané rozhraní se nepodařilo získat síťovou masku\n");
+    net = 0;
+    mask = 0;
+  }
 
-  // if (pcap_compile(handle, &fp, filter_exp.c_str(), 0, net) == -1)
-  // {
-  //   printf ("Nepodařilo se zkompilovat filter\n");
-  //   exit(0);
-  // }
-  // if (pcap_setfilter(handle, &fp) == -1)
-  // {
-  //   printf ("Nepodařilo se aplikovat filter\n");
-  //   exit(0);
-  // }
+  if (pcap_compile(handle, &fp, filter_exp.c_str(), 0, net) == -1)
+  {
+    printf ("Nepodařilo se zkompilovat filter\n");
+    exit(0);
+  }
+  if (pcap_setfilter(handle, &fp) == -1)
+  {
+    printf ("Nepodařilo se aplikovat filter\n");
+    exit(0);
+  }
 
   
 
-  // /* Grab a packet */
-	// packet = pcap_next(handle, &header);
-	// /* Print its length */
-	// printf("Jacked a packet with length of [%d]\n", header.len);
-	// /* And close the session */
-	// pcap_close(handle);
-
-  // printf ("Ahoj\n");
-
-  // void got_packet(u_char *args, const struct pcap_pkthdr *header,
-  //   const u_char *packet);
-
-  pcap_t *handle;			/* Session handle */
-	char errbuf[PCAP_ERRBUF_SIZE];	/* Error string */
-	struct bpf_program fp;		/* The compiled filter */
-	char filter_exp[] = "udp";	/* The filter expression */
-	bpf_u_int32 mask;		/* Our netmask */
-	bpf_u_int32 net;		/* Our IP */
-	struct pcap_pkthdr header;	/* The header that pcap gives us */
-	const u_char *packet;		/* The actual packet */
-
-	/* Find the properties for the device */
-	if (pcap_lookupnet(flags.interface_arg.c_str(), &net, &mask, errbuf) == -1) {
-		fprintf(stderr, "Couldn't get netmask for device %s: %s\n", flags.interface_arg.c_str(), errbuf);
-		net = 0;
-		mask = 0;
-	}
-	/* Open the session in promiscuous mode */
-	handle = pcap_open_live(flags.interface_arg.c_str(), BUFSIZ, 1, 1000, errbuf);
-	if (handle == NULL) {
-		fprintf(stderr, "Couldn't open device %s: %s\n", flags.interface_arg.c_str(), errbuf);
-		exit(0);
-	}
-	/* Compile and apply the filter */
-	if (pcap_compile(handle, &fp, filter_exp, 0, net) == -1) {
-		fprintf(stderr, "Couldn't parse filter %s: %s\n", filter_exp, pcap_geterr(handle));
-		exit(0);
-	}
-	if (pcap_setfilter(handle, &fp) == -1) {
-		fprintf(stderr, "Couldn't install filter %s: %s\n", filter_exp, pcap_geterr(handle));
-		exit(0);
-	}
-	/* Grab a packet */
+  /* Grab a packet */
 	packet = pcap_next(handle, &header);
 	/* Print its length */
 	printf("Jacked a packet with length of [%d]\n", header.len);
 	/* And close the session */
 	pcap_close(handle);
-
 
 }
