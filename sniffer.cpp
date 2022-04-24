@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <getopt.h>
 #include <pcap/pcap.h>
-#include <string>
+#include <string.h>
 #include <iostream>
 #include <arpa/inet.h>
 #include <netinet/ether.h>
@@ -39,6 +39,24 @@ struct Flags
     ((optarg == NULL && optind < argc && argv[optind][0] != '-') \
      ? (bool) (optarg = argv[optind++]) \
      : (optarg != NULL))
+
+int portCheck(const char *port){
+    int intPort = atoi(port);
+    for (size_t i = 0; i < strlen(port); i++) // checking if number
+    {
+        if (!isdigit(port[i]))
+        {
+            printf("Špatný port!\n");
+            exit(0);
+        }
+    }
+    if (!(intPort <= 65535) || !(intPort >= 0)) // checking range
+    {
+        printf("Špatný rozsah portu!\n");
+        exit(0);
+    }
+    return intPort;
+}
 
 /* Funkce pro vypsání dostupných rozhranní nebo pro kontrolu vloženého argumentu */
 bool checkInt(Flags flags)
@@ -156,7 +174,7 @@ void printData(struct pcap_pkthdr header, const u_char *packet)
 
     if (i+1 >= header.len) // jedná se o poslední cyklus
     {
-      if (i % 16 == 0)
+      if (i+1 % 16 == 0)
         printf("%s\n", printableChar.c_str());
       else
       {
@@ -210,7 +228,7 @@ int main (int argc, char **argv)
             break;
 
         case 'p': // port
-            flags.port = atoi(optarg);
+            flags.port = portCheck(optarg);
             break;
 
         case 't': // tcp
@@ -272,37 +290,21 @@ int main (int argc, char **argv)
 
   if (pcap_lookupnet(flags.interface_arg.c_str(), &net, &mask, errbuf) == -1) // TODO: no chyba?
   {
-    fprintf(stderr, "Couldn't get netmask for device %s: %s\n", flags.interface_arg.c_str(), errbuf);
+    fprintf(stderr, "Nepodařilo se získat síťovou masku pro %s: %s\n", flags.interface_arg.c_str(), errbuf);
     net = 0;
     mask = 0;
   }
 
   if (pcap_compile(handle, &fp, filter_exp.c_str(), 0, net) == -1)
   {
-    printf ("Nepodařilo se zkompilovat filter\n");
+    fprintf(stderr, "Nepodařilo se zkompilovat filtr %s: %s\n", filter_exp.c_str(), pcap_geterr(handle));
     exit(1);
   }
   if (pcap_setfilter(handle, &fp) == -1)
   {
-    printf ("Nepodařilo se aplikovat filter\n");
+    fprintf(stderr, "Nepodařilo se nastavit filtr %s: %s\n", filter_exp.c_str(), pcap_geterr(handle));
     exit(1);
   }
-
-  
-
-  
-  // const struct sniff_ip *ip; /* The IP header */
-  // const struct sniff_tcp *tcp; /* The TCP header */
-  // const char *payload; /* Packet payload */
-
-  // ethernet = (struct ether_header*)(packet);
-
-  // ethernet->ether_type
-
-  // ethernet.ether_type == ntohs(ETHERTYPE_ARP);
-  
-  // ether_arp
-
 
   const struct ether_header *ethernet; /* The ethernet header */
   const struct ether_arp *arp;
@@ -310,8 +312,6 @@ int main (int argc, char **argv)
   const struct ip6_hdr *ipv6;
   const struct tcphdr *tcp;
   const struct udphdr *udp;
-
-  std::string packInfo = "";
 
   for (int i = 0; i < flags.packetcount; i++)
   {
@@ -330,7 +330,7 @@ int main (int argc, char **argv)
     printf ("src MAC: %02X:%02X:%02X:%02X:%02X:%02X\n", ethernet->ether_shost[0], ethernet->ether_shost[1], ethernet->ether_shost[2], ethernet->ether_shost[3], ethernet->ether_shost[4], ethernet->ether_shost[5]);
     printf ("dst MAC: %02X:%02X:%02X:%02X:%02X:%02X\n", ethernet->ether_dhost[0], ethernet->ether_dhost[1], ethernet->ether_dhost[2], ethernet->ether_dhost[3], ethernet->ether_dhost[4], ethernet->ether_dhost[5]);
 
-    printf ("frame length: %db\n", header.len);
+    printf ("frame length: %d bytes\n", header.len);
 
     if (ethernet->ether_type == ntohs(ETHERTYPE_ARP)) // ARP
     {
@@ -352,15 +352,12 @@ int main (int argc, char **argv)
     {
       printf ("Jedná se o IP protokol\n");
       ipv4 = (struct iphdr*)(packet + ETH_HLEN);
-      
       char ip_adress[64];
 
       inet_ntop(AF_INET, &(ipv4->saddr), ip_adress, 64);
-
       printf ("src IP: %s\n", ip_adress);
 
       inet_ntop(AF_INET, &(ipv4->daddr), ip_adress, 64);
-
       printf ("dst IP: %s\n", ip_adress);
 
       if (ipv4->protocol == IPPROTO_TCP) // jedná se o tcp
@@ -375,10 +372,9 @@ int main (int argc, char **argv)
         printf("src port: %d\n", ntohs(udp->uh_sport));
         printf("dst port: %d\n", ntohs(udp->uh_dport));
       }
-      else
+      else if (ipv4->protocol == IPPROTO_ICMP)
       {
-        printf("Neznámý protokol u IP");
-        exit(1);
+        // icmp se nic nevypisuje
       }
     }
 
@@ -386,15 +382,12 @@ int main (int argc, char **argv)
     {
       printf ("Jedná se o IPv6 protokol\n");
       ipv6 = (struct ip6_hdr*)(packet + ETH_HLEN);
-      
       char ip_adress[64];
 
       inet_ntop(AF_INET6, &(ipv6->ip6_src), ip_adress, 64);
-
       printf ("src IP: %s\n", ip_adress);
 
       inet_ntop(AF_INET6, &(ipv6->ip6_dst), ip_adress, 64);
-
       printf ("dst IP: %s\n", ip_adress);
 
       if (ipv6->ip6_nxt == IPPROTO_TCP) // jedná se o tcp
@@ -409,15 +402,9 @@ int main (int argc, char **argv)
         printf("src port: %d\n", ntohs(udp->uh_sport));
         printf("dst port: %d\n", ntohs(udp->uh_dport));
       }
-      else if (ipv6->ip6_nxt == IPPROTO_ICMP)
-      {
-        printf("Neznámý protokol u IP");
-        exit(0);
-      }
       else if (ipv6->ip6_nxt == IPPROTO_ICMPV6)
       {
-        printf("Neznámý protokol u IP");
-        exit(0);
+        // continue; // z icmpv6 se nic nevypisuje
       }
     }
 
