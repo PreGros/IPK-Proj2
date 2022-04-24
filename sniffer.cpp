@@ -336,7 +336,7 @@ int main (int argc, char **argv)
     char res[32];
     timeinfo = gmtime (&(header->ts.tv_sec));
     strftime(res, sizeof(res), "%Y-%m-%dT%H:%M:%S", timeinfo); // nastavení timestamp na požadovaný formát
-    printf("%s.%ldZ\n", res, header->ts.tv_usec);
+    printf("timestamp: %s.%ldZ\n", res, header->ts.tv_usec);
 
     printf ("src MAC: %02X:%02X:%02X:%02X:%02X:%02X\n", ethernet->ether_shost[0], ethernet->ether_shost[1], ethernet->ether_shost[2], ethernet->ether_shost[3], ethernet->ether_shost[4], ethernet->ether_shost[5]);
     printf ("dst MAC: %02X:%02X:%02X:%02X:%02X:%02X\n", ethernet->ether_dhost[0], ethernet->ether_dhost[1], ethernet->ether_dhost[2], ethernet->ether_dhost[3], ethernet->ether_dhost[4], ethernet->ether_dhost[5]);
