@@ -241,7 +241,7 @@ int main (int argc, char **argv)
 
   
 
-  const struct ether_header *ethernet; /* The ethernet header */
+  
   // const struct sniff_ip *ip; /* The IP header */
   // const struct sniff_tcp *tcp; /* The TCP header */
   // const char *payload; /* Packet payload */
@@ -255,11 +255,16 @@ int main (int argc, char **argv)
   // ether_arp
 
 
+  const struct ether_header *ethernet; /* The ethernet header */
 
+  std::string packInfo = "";
 
   for (int i = 0; i < flags.packetcount; i++)
   {
     packet = pcap_next(handle, &header);
+    ethernet = (struct ether_header*)(packet);
+
+    printf("Type: %04hx\n", ethernet->ether_type);
 
     // timestamp
     char res[32];
@@ -267,17 +272,17 @@ int main (int argc, char **argv)
     struct tm * timeinfo;
     timeinfo = gmtime (&header.ts.tv_sec);
     strftime(res, sizeof(res), "%Y-%m-%dT%H:%M:%S", timeinfo);
-    sprintf(usec, "%s.%ld +02:00", res, header.ts.tv_usec);
+    printf("%s.%ld +02:00\n", res, header.ts.tv_usec);
 
-    
-
+    printf ("src MAC: %02X:%02X:%02X:%02X:%02X:%02X\n", ethernet->ether_shost[0], ethernet->ether_shost[1], ethernet->ether_shost[2], ethernet->ether_shost[3], ethernet->ether_shost[4], ethernet->ether_shost[5]);
+    printf ("dst MAC: %02X:%02X:%02X:%02X:%02X:%02X\n", ethernet->ether_dhost[0], ethernet->ether_dhost[1], ethernet->ether_dhost[2], ethernet->ether_dhost[3], ethernet->ether_dhost[4], ethernet->ether_dhost[5]);
+  
+  
   }
 
 
 
 	/* And close the session */
 	pcap_close(handle);
-
-  struct tm lt;
 
 }
