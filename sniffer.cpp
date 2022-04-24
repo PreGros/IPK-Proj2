@@ -50,7 +50,8 @@ void handler(int signum)
   exit(signum);
 }
 
-int portCheck(const char *port){
+/* Funkce pro kontrolu portu */
+int port_Check(const char *port){
     int intPort = atoi(port);
     for (size_t i = 0; i < strlen(port); i++) // checking if number
     {
@@ -69,7 +70,7 @@ int portCheck(const char *port){
 }
 
 /* Funkce pro vypsání dostupných rozhranní nebo pro kontrolu vloženého argumentu */
-bool checkInt(Flags flags)
+bool check_Int(Flags flags)
 {
   char errbuff[PCAP_ERRBUF_SIZE];
   pcap_if_t *interface;
@@ -111,6 +112,7 @@ bool checkInt(Flags flags)
   return true;
 }
 
+/* Funkce pro vytvoření řetězce pro filtr podle zadaných příznaků */
 std::string determine_filter(Flags *flags)
 {
   std::string expression = "";
@@ -154,6 +156,7 @@ std::string determine_filter(Flags *flags)
   return expression;
 }
 
+/* Funkce pro vypsání všech dat z paketu */
 void printData(struct pcap_pkthdr header, const u_char *packet)
 {
   // Vypsání dat
@@ -202,6 +205,7 @@ void printData(struct pcap_pkthdr header, const u_char *packet)
 
 int main (int argc, char **argv)
 {
+  /******************* Vstupní parametry pomocí knihovny Getopt *******************/
   struct Flags flags;
   int c;
 
@@ -238,7 +242,7 @@ int main (int argc, char **argv)
             break;
 
         case 'p': // port
-            flags.port = portCheck(optarg);
+            flags.port = port_Check(optarg);
             break;
 
         case 't': // tcp
@@ -266,7 +270,9 @@ int main (int argc, char **argv)
         }
     }
 
-  if (checkInt(flags)) // výpis/kontrola rozhránní
+  /******************* Nastevení rozhraní, vytváření handleru a nastavení filtru *******************/
+
+  if (check_Int(flags)) // výpis a kontrola rozhránní
   {
     fprintf(stderr,"Zadaný argument není platným rozhraním!\n");
     exit(0);
@@ -283,8 +289,6 @@ int main (int argc, char **argv)
     fprintf(stderr, "Nepodařilo se otevřít rozhraní %s: %s\n", flags.interface_arg.c_str(), errbuf);
     exit(1);
   }
-
-  //-------------------------
 
   if (pcap_datalink(handle) != DLT_EN10MB)
   {
@@ -317,16 +321,14 @@ int main (int argc, char **argv)
     exit(1);
   }
 
-  const struct ether_header *ethernet; /* The ethernet header */
+  const struct ether_header *ethernet;
   const struct ether_arp *arp;
   const struct iphdr *ipv4;
   const struct ip6_hdr *ipv6;
+  struct tm * timeinfo;
   
-  
-
-  for (int i = 0; i < flags.packetcount; i++)
+  for (int i = 0; i < flags.packetcount; i++) // Vytiskni n paketů
   {
-    //packet = pcap_next(handle, &header);
     pcap_next_ex(handle, &header, &packet);
     ethernet = (struct ether_header*)(packet);
 
@@ -334,10 +336,9 @@ int main (int argc, char **argv)
 
     // timestamp
     char res[32];
-    struct tm * timeinfo;
     timeinfo = gmtime (&(header->ts.tv_sec));
     strftime(res, sizeof(res), "%Y-%m-%dT%H:%M:%S", timeinfo);
-    printf("%s.%ld +02:00\n", res, header->ts.tv_usec);
+    printf("%s.%ldZ\n", res, header->ts.tv_usec);
 
     printf ("src MAC: %02X:%02X:%02X:%02X:%02X:%02X\n", ethernet->ether_shost[0], ethernet->ether_shost[1], ethernet->ether_shost[2], ethernet->ether_shost[3], ethernet->ether_shost[4], ethernet->ether_shost[5]);
     printf ("dst MAC: %02X:%02X:%02X:%02X:%02X:%02X\n", ethernet->ether_dhost[0], ethernet->ether_dhost[1], ethernet->ether_dhost[2], ethernet->ether_dhost[3], ethernet->ether_dhost[4], ethernet->ether_dhost[5]);
