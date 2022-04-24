@@ -127,6 +127,52 @@ std::string determine_filter(Flags *flags)
   return expression;
 }
 
+void printData(struct pcap_pkthdr header, const u_char *packet)
+{
+  // Vypsání dat
+  std::string printableChar = "";
+  printf("\n%04X: ", 0);
+  for (bpf_u_int32 i = 0; i < header.len; i++)
+  {
+    printf("%02X ", packet[i]);
+
+    if (isprint((int)packet[i])) // Nahrazení nevypsatelných znaků tečkou
+      printableChar += packet[i];
+    else
+      printableChar += ".";
+
+    if ((i+1) % 8 == 0 && (i+1) % 16 != 0) // Přidané mezery každý osmý cyklus
+    {
+      printf(" ");
+      printableChar += " ";
+    }
+
+    if ((i+1) % 16 == 0) // Pokud již vytiskl 16 hex čísel, vytiskni jejich znakovou reprezentaci a začni na novém řádku
+    {
+      printf("%s", printableChar.c_str());
+      printableChar = "";
+      printf("\n");
+      printf("%04X: ", i+1);
+    } 
+
+    if (i+1 >= header.len) // jedná se o poslední cyklus
+    {
+      if (i % 16 == 0)
+        printf("%s\n", printableChar.c_str());
+      else
+      {
+        for (bpf_u_int32 j = 0; j < 16 - (i % 16) - 1; j++)
+        {
+          printf("   "); // vytiskni 3 mezery za každou chybějící hexa číslici
+        }
+        if (16 - (i%16) - 1 > 7)
+          printf(" ");
+        printf("%s\n", printableChar.c_str());
+      }
+    }
+  }
+}
+
 int main (int argc, char **argv)
 {
   struct Flags flags;
@@ -376,50 +422,9 @@ int main (int argc, char **argv)
       }
     }
 
-    // Vypsání dat
-    std::string printableChar = "";
-    printf("\n%04X: ", 0);
-    for (bpf_u_int32 i = 0; i < header.len; i++)
-    {
-      printf("%02X ", packet[i]);
-
-      if (isprint((int)packet[i])) // Nahrazení nevypsatelných znaků tečkou
-        printableChar += packet[i];
-      else
-        printableChar += ".";
-
-      if ((i+1) % 8 == 0 && (i+1) % 16 != 0) // Přidané mezery každý osmý cyklus
-      {
-        printf(" ");
-        printableChar += " ";
-      }
-
-      if ((i+1) % 16 == 0) // Pokud již vytiskl 16 hex čísel, vytiskni jejich znakovou reprezentaci a začni na novém řádku
-      {
-        printf("%s", printableChar.c_str());
-        printableChar = "";
-        printf("\n");
-        printf("%04X: ", i+1);
-      } 
-
-      if (i+1 >= header.len) // jedná se o poslední cyklus
-      {
-        // printf("%s\n", printableChar.c_str()); // TODO:
-        if (i % 16 == 0)
-          printf("%s\n", printableChar.c_str());
-        else
-        {
-          for (bpf_u_int32 j = 0; j < 16 - (i % 16) - 1; j++)
-          {
-            printf("   "); // vytiskni 3 mezery za každou chybějící hexa číslici
-          }
-          if (16 - (i%16) - 1 > 7)
-            printf(" ");
-          printf("%s\n", printableChar.c_str());
-        }
-      }
-    }
+    printData(header, packet); // vytisknuti dat
     
+    printf("\n\n"); // mezera mezi packety 
   }
 
 
