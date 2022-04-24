@@ -20,6 +20,9 @@ using namespace std;
 // potřeba u překladu použít flag -lpcap https://askubuntu.com/questions/582042/problem-linking-against-pcap-h
 // základní sniffer https://www.tcpdump.org/pcap.html
 
+// Globální proměnné
+pcap_t *handle;
+
 /* Pomocná struktura pro uchování příznaků */
 struct Flags
   {
@@ -33,12 +36,19 @@ struct Flags
     int packetcount = 1;
   };
 
-
 /* Makro pro rozeznání optional argumentu převzané z https://cfengine.com/blog/2021/optional-arguments-with-getopt-long/ */
 #define OPTIONAL_ARGUMENT_IS_PRESENT \
     ((optarg == NULL && optind < argc && argv[optind][0] != '-') \
      ? (bool) (optarg = argv[optind++]) \
      : (optarg != NULL))
+
+/* Funkce pro zachycení události ukončení programu CTRL+C, abych mohl dealokovat všechny naalokované zdroje  */
+void handler(int signum)
+{
+  if (handle != NULL)
+    pcap_close(handle);
+  exit(signum);
+}
 
 int portCheck(const char *port){
     int intPort = atoi(port);
@@ -46,13 +56,13 @@ int portCheck(const char *port){
     {
         if (!isdigit(port[i]))
         {
-            printf("Špatný port!\n");
+            fprintf(stderr, "Špatný port!\n");
             exit(0);
         }
     }
     if (!(intPort <= 65535) || !(intPort >= 0)) // checking range
     {
-        printf("Špatný rozsah portu!\n");
+        fprintf(stderr,"Špatný rozsah portu!\n");
         exit(0);
     }
     return intPort;
@@ -67,7 +77,7 @@ bool checkInt(Flags flags)
   /* Nalezení a kontrola existence interface */
   if(pcap_findalldevs(&interface, errbuff) == PCAP_ERROR)
   {
-    printf ("Nebyl nalezen žádný interface!\n");
+    fprintf(stderr,"Nebyl nalezen žádný interface!\n");
     exit(1);
   }
 
@@ -258,12 +268,13 @@ int main (int argc, char **argv)
 
   if (checkInt(flags)) // výpis/kontrola rozhránní
   {
-    printf ("Zadaný argument není platným rozhraním!\n");
+    fprintf(stderr,"Zadaný argument není platným rozhraním!\n");
     exit(0);
   }
 
   char errbuf[PCAP_ERRBUF_SIZE];
-  pcap_t *handle;
+
+  signal(SIGINT, handler);
 
   /* Vytváření sniffing session */
   handle = pcap_open_live(flags.interface_arg.c_str(), BUFSIZ, 1, 1000, errbuf);
@@ -310,8 +321,8 @@ int main (int argc, char **argv)
   const struct ether_arp *arp;
   const struct iphdr *ipv4;
   const struct ip6_hdr *ipv6;
-  const struct tcphdr *tcp;
-  const struct udphdr *udp;
+  
+  
 
   for (int i = 0; i < flags.packetcount; i++)
   {
@@ -336,16 +347,12 @@ int main (int argc, char **argv)
     if (ethernet->ether_type == ntohs(ETHERTYPE_ARP)) // ARP
     {
       arp = (struct ether_arp*)(packet + ETH_HLEN);
-      //printf ("%d.%d.%d.%d.%d.%d\n", arp->arp_sha[0], arp->arp_sha[1], arp->arp_sha[2], arp->arp_sha[3], arp->arp_sha[4], arp->arp_sha[5]);
-
       char ip_adress[64];
 
       inet_ntop(AF_INET, &(arp->arp_spa), ip_adress, 64);
-
       printf ("src IP: %s\n", ip_adress);
 
       inet_ntop(AF_INET, &(arp->arp_tpa), ip_adress, 64);
-
       printf ("dst IP: %s\n", ip_adress);
     }
 
@@ -363,12 +370,14 @@ int main (int argc, char **argv)
 
       if (ipv4->protocol == IPPROTO_TCP) // jedná se o tcp
       {
+        const struct tcphdr *tcp;
         tcp = (struct tcphdr*)(packet + ETH_HLEN + (ipv4->ihl*4));
         printf("src port: %d\n", ntohs(tcp->th_sport));
         printf("dst port: %d\n", ntohs(tcp->th_dport));
       }
       else if (ipv4->protocol == IPPROTO_UDP) // jedná se o udp
       {
+        const struct udphdr *udp;
         udp = (struct udphdr*)(packet + ETH_HLEN + (ipv4->ihl*4));
         printf("src port: %d\n", ntohs(udp->uh_sport));
         printf("dst port: %d\n", ntohs(udp->uh_dport));
@@ -393,12 +402,14 @@ int main (int argc, char **argv)
 
       if (ipv6->ip6_nxt == IPPROTO_TCP) // jedná se o tcp
       {
+        const struct tcphdr *tcp;
         tcp = (struct tcphdr*)(packet + ETH_HLEN + IP6_HLEN);
         printf("src port: %d\n", ntohs(tcp->th_sport));
         printf("dst port: %d\n", ntohs(tcp->th_dport));
       }
       else if (ipv6->ip6_nxt == IPPROTO_UDP) // jedná se o udp
       {
+        const struct udphdr *udp;
         udp = (struct udphdr*)(packet + ETH_HLEN + IP6_HLEN);
         printf("src port: %d\n", ntohs(udp->uh_sport));
         printf("dst port: %d\n", ntohs(udp->uh_dport));
