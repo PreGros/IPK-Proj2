@@ -30,7 +30,7 @@ struct Flags
     bool udp = false;
     bool arp = false;
     bool icmp = false;
-    int packetcount = 0;
+    int packetcount = 1;
   };
 
 
@@ -50,7 +50,7 @@ bool checkInt(Flags flags)
   if(pcap_findalldevs(&interface, errbuff) == PCAP_ERROR)
   {
     printf ("Nebyl nalezen žádný interface!\n");
-    exit(0);
+    exit(1);
   }
 
   pcap_if_t *temp = interface; // pro vyčištění celého vázaného listu 
@@ -96,7 +96,7 @@ std::string determine_filter(Flags *flags)
     else if (flags->udp == true)
       expression = "(udp and port " + std::to_string(flags->port) + ")";
     else
-      expression = "port " + std::to_string(flags->port);
+      expression = "(udp and port " + std::to_string(flags->port) + ") or (tcp and port " + std::to_string(flags->port) + ")";
   }
   else // port není zadán
   {
@@ -120,8 +120,7 @@ std::string determine_filter(Flags *flags)
 
   if (expression == "")
   {
-    printf ("Nezadaný žádný filtr\n");
-    exit(0);
+    expression = "tcp or udp or arp or icmp";
   }
 
   return expression;
@@ -252,16 +251,16 @@ int main (int argc, char **argv)
   handle = pcap_open_live(flags.interface_arg.c_str(), BUFSIZ, 1, 1000, errbuf);
   if (handle == NULL)
   {
-    printf ("Nepodařilo se otevřít dané rozhraní %s\n", flags.interface_arg.c_str());
-    exit(0);
+    fprintf(stderr, "Nepodařilo se otevřít rozhraní %s: %s\n", flags.interface_arg.c_str(), errbuf);
+    exit(1);
   }
 
   //-------------------------
 
   if (pcap_datalink(handle) != DLT_EN10MB)
   {
-    printf ("Zařízení nepodporuje ethernetové hlavičky");
-    exit(0);
+    fprintf(stderr, "Rozhraní %s neposkytuje ethernetové hlavičky - nejsou podporovány\n", flags.interface_arg.c_str());
+    exit(1);
   }
 
   struct bpf_program fp;		/* The compiled filter expression */
@@ -273,7 +272,7 @@ int main (int argc, char **argv)
 
   if (pcap_lookupnet(flags.interface_arg.c_str(), &net, &mask, errbuf) == -1) // TODO: no chyba?
   {
-    printf ("Pro dané rozhraní se nepodařilo získat síťovou masku\n");
+    fprintf(stderr, "Couldn't get netmask for device %s: %s\n", flags.interface_arg.c_str(), errbuf);
     net = 0;
     mask = 0;
   }
@@ -281,12 +280,12 @@ int main (int argc, char **argv)
   if (pcap_compile(handle, &fp, filter_exp.c_str(), 0, net) == -1)
   {
     printf ("Nepodařilo se zkompilovat filter\n");
-    exit(0);
+    exit(1);
   }
   if (pcap_setfilter(handle, &fp) == -1)
   {
     printf ("Nepodařilo se aplikovat filter\n");
-    exit(0);
+    exit(1);
   }
 
   
@@ -364,13 +363,13 @@ int main (int argc, char **argv)
 
       printf ("dst IP: %s\n", ip_adress);
 
-      if (ipv4->protocol == 6) // jedná se o tcp
+      if (ipv4->protocol == IPPROTO_TCP) // jedná se o tcp
       {
         tcp = (struct tcphdr*)(packet + ETH_HLEN + (ipv4->ihl*4));
         printf("src port: %d\n", ntohs(tcp->th_sport));
         printf("dst port: %d\n", ntohs(tcp->th_dport));
       }
-      else if (ipv4->protocol == 17) // jedná se o udp
+      else if (ipv4->protocol == IPPROTO_UDP) // jedná se o udp
       {
         udp = (struct udphdr*)(packet + ETH_HLEN + (ipv4->ihl*4));
         printf("src port: %d\n", ntohs(udp->uh_sport));
@@ -379,7 +378,7 @@ int main (int argc, char **argv)
       else
       {
         printf("Neznámý protokol u IP");
-        exit(0);
+        exit(1);
       }
     }
 
