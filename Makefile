@@ -1,4 +1,4 @@
-PRJ=Sniffer
+PRJ=ipk-sniffer
 PROGS=sniffer.cpp
 CC=g++
 CFLAGS=-std=c++11 -Wall -Wextra -Werror -pedantic

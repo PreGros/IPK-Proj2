@@ -15,7 +15,7 @@
 
 using namespace std;
 
-#define IP6_HLEN 40
+#define IP6_HLEN 40 // velikost IPv6 hlavičky
 
 // potřeba u překladu použít flag -lpcap https://askubuntu.com/questions/582042/problem-linking-against-pcap-h
 // základní sniffer https://www.tcpdump.org/pcap.html
@@ -280,17 +280,16 @@ int main (int argc, char **argv)
 
   char errbuf[PCAP_ERRBUF_SIZE];
 
-  signal(SIGINT, handler);
+  signal(SIGINT, handler); // zachycení událost SIGINT(CTRL+C)
 
-  /* Vytváření sniffing session */
-  handle = pcap_open_live(flags.interface_arg.c_str(), BUFSIZ, 1, 1000, errbuf);
+  handle = pcap_open_live(flags.interface_arg.c_str(), BUFSIZ, 1, 1000, errbuf); // Vytváření sniffing session
   if (handle == NULL)
   {
     fprintf(stderr, "Nepodařilo se otevřít rozhraní %s: %s\n", flags.interface_arg.c_str(), errbuf);
     exit(1);
   }
 
-  if (pcap_datalink(handle) != DLT_EN10MB)
+  if (pcap_datalink(handle) != DLT_EN10MB) // jestli zařízení podporuje ethernetové hlavičky
   {
     fprintf(stderr, "Rozhraní %s neposkytuje ethernetové hlavičky - nejsou podporovány\n", flags.interface_arg.c_str());
     exit(1);
@@ -303,7 +302,7 @@ int main (int argc, char **argv)
   struct pcap_pkthdr *header;
 	const u_char *packet;
 
-  if (pcap_lookupnet(flags.interface_arg.c_str(), &net, &mask, errbuf) == -1) // TODO: no chyba?
+  if (pcap_lookupnet(flags.interface_arg.c_str(), &net, &mask, errbuf) == -1)
   {
     fprintf(stderr, "Nepodařilo se získat síťovou masku pro %s: %s\n", flags.interface_arg.c_str(), errbuf);
     net = 0;
@@ -321,6 +320,8 @@ int main (int argc, char **argv)
     exit(1);
   }
 
+  /******************* Zachytávání jednotlivých paketů a výpis jejich informací *******************/
+
   const struct ether_header *ethernet;
   const struct ether_arp *arp;
   const struct iphdr *ipv4;
@@ -330,36 +331,34 @@ int main (int argc, char **argv)
   for (int i = 0; i < flags.packetcount; i++) // Vytiskni n paketů
   {
     pcap_next_ex(handle, &header, &packet);
-    ethernet = (struct ether_header*)(packet);
+    ethernet = (struct ether_header*)(packet); // 
 
-    printf("Type: %04hx\n", ethernet->ether_type);
-
-    // timestamp
     char res[32];
     timeinfo = gmtime (&(header->ts.tv_sec));
-    strftime(res, sizeof(res), "%Y-%m-%dT%H:%M:%S", timeinfo);
+    strftime(res, sizeof(res), "%Y-%m-%dT%H:%M:%S", timeinfo); // nastavení timestamp na požadovaný formát
     printf("%s.%ldZ\n", res, header->ts.tv_usec);
 
     printf ("src MAC: %02X:%02X:%02X:%02X:%02X:%02X\n", ethernet->ether_shost[0], ethernet->ether_shost[1], ethernet->ether_shost[2], ethernet->ether_shost[3], ethernet->ether_shost[4], ethernet->ether_shost[5]);
     printf ("dst MAC: %02X:%02X:%02X:%02X:%02X:%02X\n", ethernet->ether_dhost[0], ethernet->ether_dhost[1], ethernet->ether_dhost[2], ethernet->ether_dhost[3], ethernet->ether_dhost[4], ethernet->ether_dhost[5]);
 
-    printf ("frame length: %d bytes\n", header->len);
+    printf ("frame length: %d bytes\n", header->len); // výpis velikosti paketu
 
-    if (ethernet->ether_type == ntohs(ETHERTYPE_ARP)) // ARP
+    /* ARP hlavička */
+    if (ethernet->ether_type == ntohs(ETHERTYPE_ARP))
     {
-      arp = (struct ether_arp*)(packet + ETH_HLEN);
+      arp = (struct ether_arp*)(packet + ETH_HLEN); // přetypování na strukturu ether_arp, která obsahuje potřebné informace
       char ip_adress[64];
 
-      inet_ntop(AF_INET, &(arp->arp_spa), ip_adress, 64);
+      inet_ntop(AF_INET, &(arp->arp_spa), ip_adress, 64); // převede IPv4 nebo IPv6 v bin na textovou formu (podle AF_INET nebo AF_INET6)
       printf ("src IP: %s\n", ip_adress);
 
       inet_ntop(AF_INET, &(arp->arp_tpa), ip_adress, 64);
       printf ("dst IP: %s\n", ip_adress);
     }
 
-    else if (ethernet->ether_type == ntohs(ETHERTYPE_IP)) // IP
+    /* IPv4 hlavička - tcp, udp a icmp protokol*/
+    else if (ethernet->ether_type == ntohs(ETHERTYPE_IP))
     {
-      printf ("Jedná se o IP protokol\n");
       ipv4 = (struct iphdr*)(packet + ETH_HLEN);
       char ip_adress[64];
 
@@ -389,9 +388,9 @@ int main (int argc, char **argv)
       }
     }
 
+    /* IPv6 hlavička - tcp, udp a icmpv6 protokol */
     else if (ethernet->ether_type == ntohs(ETHERTYPE_IPV6)) // IPv6
     {
-      printf ("Jedná se o IPv6 protokol\n");
       ipv6 = (struct ip6_hdr*)(packet + ETH_HLEN);
       char ip_adress[64];
 
