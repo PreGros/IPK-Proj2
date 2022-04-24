@@ -10,8 +10,12 @@
 #include <netinet/tcp.h>
 #include <netinet/ip_icmp.h>
 #include <sys/time.h>
+#include <netinet/udp.h>
+#include <csignal>
 
 using namespace std;
+
+#define IP6_HLEN 40
 
 // potřeba u překladu použít flag -lpcap https://askubuntu.com/questions/582042/problem-linking-against-pcap-h
 // základní sniffer https://www.tcpdump.org/pcap.html
@@ -258,7 +262,9 @@ int main (int argc, char **argv)
   const struct ether_header *ethernet; /* The ethernet header */
   const struct ether_arp *arp;
   const struct iphdr *ipv4;
-  // const struct ip6_hdr *ip6;
+  const struct ip6_hdr *ipv6;
+  const struct tcphdr *tcp;
+  const struct udphdr *udp;
 
   std::string packInfo = "";
 
@@ -283,7 +289,7 @@ int main (int argc, char **argv)
 
     if (ethernet->ether_type == ntohs(ETHERTYPE_ARP)) // ARP
     {
-      arp = (struct ether_arp*)(packet + 14);
+      arp = (struct ether_arp*)(packet + ETH_HLEN);
       //printf ("%d.%d.%d.%d.%d.%d\n", arp->arp_sha[0], arp->arp_sha[1], arp->arp_sha[2], arp->arp_sha[3], arp->arp_sha[4], arp->arp_sha[5]);
 
       char ip_adress[64];
@@ -300,7 +306,7 @@ int main (int argc, char **argv)
     else if (ethernet->ether_type == ntohs(ETHERTYPE_IP)) // IP
     {
       printf ("Jedná se o IP protokol\n");
-      ipv4 = (struct iphdr*)(packet + 14);
+      ipv4 = (struct iphdr*)(packet + ETH_HLEN);
       
       char ip_adress[64];
 
@@ -312,13 +318,17 @@ int main (int argc, char **argv)
 
       printf ("dst IP: %s\n", ip_adress);
 
-      if (ipv4->protocol == 6) /// jedná se o tcp
+      if (ipv4->protocol == 6) // jedná se o tcp
       {
-        
+        tcp = (struct tcphdr*)(packet + ETH_HLEN + (ipv4->ihl*4));
+        printf("src port: %d\n", ntohs(tcp->th_sport));
+        printf("dst port: %d\n", ntohs(tcp->th_dport));
       }
       else if (ipv4->protocol == 17) // jedná se o udp
       {
-
+        udp = (struct udphdr*)(packet + ETH_HLEN + (ipv4->ihl*4));
+        printf("src port: %d\n", ntohs(udp->uh_sport));
+        printf("dst port: %d\n", ntohs(udp->uh_dport));
       }
       else
       {
@@ -330,6 +340,40 @@ int main (int argc, char **argv)
     else if (ethernet->ether_type == ntohs(ETHERTYPE_IPV6)) // IPv6
     {
       printf ("Jedná se o IPv6 protokol\n");
+      ipv6 = (struct ip6_hdr*)(packet + ETH_HLEN);
+      
+      char ip_adress[64];
+
+      inet_ntop(AF_INET6, &(ipv6->ip6_src), ip_adress, 64);
+
+      printf ("src IP: %s\n", ip_adress);
+
+      inet_ntop(AF_INET6, &(ipv6->ip6_dst), ip_adress, 64);
+
+      printf ("dst IP: %s\n", ip_adress);
+
+      if (ipv6->ip6_nxt == IPPROTO_TCP) // jedná se o tcp
+      {
+        tcp = (struct tcphdr*)(packet + ETH_HLEN + IP6_HLEN);
+        printf("src port: %d\n", ntohs(tcp->th_sport));
+        printf("dst port: %d\n", ntohs(tcp->th_dport));
+      }
+      else if (ipv6->ip6_nxt == IPPROTO_UDP) // jedná se o udp
+      {
+        udp = (struct udphdr*)(packet + ETH_HLEN + IP6_HLEN);
+        printf("src port: %d\n", ntohs(udp->uh_sport));
+        printf("dst port: %d\n", ntohs(udp->uh_dport));
+      }
+      else if (ipv6->ip6_nxt == IPPROTO_ICMP)
+      {
+        printf("Neznámý protokol u IP");
+        exit(0);
+      }
+      else if (ipv6->ip6_nxt == IPPROTO_ICMPV6)
+      {
+        printf("Neznámý protokol u IP");
+        exit(0);
+      }
     }
 
     // Vypsání dat
@@ -338,19 +382,43 @@ int main (int argc, char **argv)
     for (bpf_u_int32 i = 0; i < header.len; i++)
     {
       printf("%02X ", packet[i]);
-      if (isprint((int)packet[i]))
+
+      if (isprint((int)packet[i])) // Nahrazení nevypsatelných znaků tečkou
         printableChar += packet[i];
       else
         printableChar += ".";
-      if ((i+1) % 16 == 0)
+
+      if ((i+1) % 8 == 0 && (i+1) % 16 != 0) // Přidané mezery každý osmý cyklus
+      {
+        printf(" ");
+        printableChar += " ";
+      }
+
+      if ((i+1) % 16 == 0) // Pokud již vytiskl 16 hex čísel, vytiskni jejich znakovou reprezentaci a začni na novém řádku
       {
         printf("%s", printableChar.c_str());
         printableChar = "";
         printf("\n");
         printf("%04X: ", i+1);
       } 
+
+      if (i+1 >= header.len) // jedná se o poslední cyklus
+      {
+        // printf("%s\n", printableChar.c_str()); // TODO:
+        if (i % 16 == 0)
+          printf("%s\n", printableChar.c_str());
+        else
+        {
+          for (bpf_u_int32 j = 0; j < 16 - (i % 16) - 1; j++)
+          {
+            printf("   "); // vytiskni 3 mezery za každou chybějící hexa číslici
+          }
+          if (16 - (i%16) - 1 > 7)
+            printf(" ");
+          printf("%s\n", printableChar.c_str());
+        }
+      }
     }
-    printf("%s\n", printableChar.c_str());
     
   }
 
