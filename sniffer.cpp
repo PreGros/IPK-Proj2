@@ -241,19 +241,40 @@ int main (int argc, char **argv)
 
   
 
-  /* Grab a packet */
-	packet = pcap_next(handle, &header);
+  const struct ether_header *ethernet; /* The ethernet header */
+  // const struct sniff_ip *ip; /* The IP header */
+  // const struct sniff_tcp *tcp; /* The TCP header */
+  // const char *payload; /* Packet payload */
 
-  char res[64];
+  // ethernet = (struct ether_header*)(packet);
 
-  struct tm * timeinfo;
+  // ethernet->ether_type
 
-  timeinfo = gmtime (&header.ts.tv_sec);
+  // ethernet.ether_type == ntohs(ETHERTYPE_ARP);
+  
+  // ether_arp
 
-  strftime(res, sizeof(res), "%a %b %d %Y", timeinfo);
 
-	/* Print its length */
-	printf ("%s", res);
+
+
+  for (int i = 0; i < flags.packetcount; i++)
+  {
+    packet = pcap_next(handle, &header);
+
+    // timestamp
+    char res[32];
+    char usec[64];
+    struct tm * timeinfo;
+    timeinfo = gmtime (&header.ts.tv_sec);
+    strftime(res, sizeof(res), "%Y-%m-%dT%H:%M:%S", timeinfo);
+    sprintf(usec, "%s.%ld +02:00", res, header.ts.tv_usec);
+
+    
+
+  }
+
+
+
 	/* And close the session */
 	pcap_close(handle);
 
