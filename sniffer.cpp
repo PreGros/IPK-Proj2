@@ -268,7 +268,6 @@ int main (int argc, char **argv)
 
     // timestamp
     char res[32];
-    char usec[64];
     struct tm * timeinfo;
     timeinfo = gmtime (&header.ts.tv_sec);
     strftime(res, sizeof(res), "%Y-%m-%dT%H:%M:%S", timeinfo);
@@ -277,7 +276,8 @@ int main (int argc, char **argv)
     printf ("src MAC: %02X:%02X:%02X:%02X:%02X:%02X\n", ethernet->ether_shost[0], ethernet->ether_shost[1], ethernet->ether_shost[2], ethernet->ether_shost[3], ethernet->ether_shost[4], ethernet->ether_shost[5]);
     printf ("dst MAC: %02X:%02X:%02X:%02X:%02X:%02X\n", ethernet->ether_dhost[0], ethernet->ether_dhost[1], ethernet->ether_dhost[2], ethernet->ether_dhost[3], ethernet->ether_dhost[4], ethernet->ether_dhost[5]);
   
-  
+    if (ethernet->ether_type == ntohs(ETHERTYPE_ARP))
+      printf("Je to arp!\n");
   }
 
 
