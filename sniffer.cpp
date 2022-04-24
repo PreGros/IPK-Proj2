@@ -285,7 +285,7 @@ int main (int argc, char **argv)
   std::string filter_exp = determine_filter(&flags); //determine_filter(&flags);	/* The filter expression */
   bpf_u_int32 mask;		/* The netmask of our sniffing device */
   bpf_u_int32 net;		/* The IP of our sniffing device */
-  struct pcap_pkthdr header;
+  struct pcap_pkthdr *header;
 	const u_char *packet;
 
   if (pcap_lookupnet(flags.interface_arg.c_str(), &net, &mask, errbuf) == -1) // TODO: no chyba?
@@ -315,7 +315,8 @@ int main (int argc, char **argv)
 
   for (int i = 0; i < flags.packetcount; i++)
   {
-    packet = pcap_next(handle, &header);
+    //packet = pcap_next(handle, &header);
+    pcap_next_ex(handle, &header, &packet);
     ethernet = (struct ether_header*)(packet);
 
     printf("Type: %04hx\n", ethernet->ether_type);
@@ -323,14 +324,14 @@ int main (int argc, char **argv)
     // timestamp
     char res[32];
     struct tm * timeinfo;
-    timeinfo = gmtime (&header.ts.tv_sec);
+    timeinfo = gmtime (&(header->ts.tv_sec));
     strftime(res, sizeof(res), "%Y-%m-%dT%H:%M:%S", timeinfo);
-    printf("%s.%ld +02:00\n", res, header.ts.tv_usec);
+    printf("%s.%ld +02:00\n", res, header->ts.tv_usec);
 
     printf ("src MAC: %02X:%02X:%02X:%02X:%02X:%02X\n", ethernet->ether_shost[0], ethernet->ether_shost[1], ethernet->ether_shost[2], ethernet->ether_shost[3], ethernet->ether_shost[4], ethernet->ether_shost[5]);
     printf ("dst MAC: %02X:%02X:%02X:%02X:%02X:%02X\n", ethernet->ether_dhost[0], ethernet->ether_dhost[1], ethernet->ether_dhost[2], ethernet->ether_dhost[3], ethernet->ether_dhost[4], ethernet->ether_dhost[5]);
 
-    printf ("frame length: %d bytes\n", header.len);
+    printf ("frame length: %d bytes\n", header->len);
 
     if (ethernet->ether_type == ntohs(ETHERTYPE_ARP)) // ARP
     {
@@ -374,7 +375,7 @@ int main (int argc, char **argv)
       }
       else if (ipv4->protocol == IPPROTO_ICMP)
       {
-        // icmp se nic nevypisuje
+        // zde by byla vyřešena část pro ICMP, ale z icmp hlavičky nejsou potřeba tisknout data
       }
     }
 
@@ -404,11 +405,11 @@ int main (int argc, char **argv)
       }
       else if (ipv6->ip6_nxt == IPPROTO_ICMPV6)
       {
-        // continue; // z icmpv6 se nic nevypisuje
+        // zde by byla vyřešena část pro ICMPv6, ale z icmpv6 hlavičky nejsou potřeba tisknout data
       }
     }
 
-    printData(header, packet); // vytisknuti dat
+    printData(*header, packet); // vytisknuti dat
     
     printf("\n\n"); // mezera mezi packety 
   }
