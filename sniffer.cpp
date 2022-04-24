@@ -320,6 +320,8 @@ int main (int argc, char **argv)
     exit(1);
   }
 
+  pcap_freecode(&fp);
+
   /******************* Zachytávání jednotlivých paketů a výpis jejich informací *******************/
 
   const struct ether_header *ethernet;

@@ -35,7 +35,7 @@ Argumenty mohou být v libovolném pořadí a pokud nebudou konkrétní protokol
 ---
 **POZOR**
 
-Aplikace kontroluje u vloženého portu správnost jeho syntaxe a rozmezí, ve kterém se hodnota portu může pohybovat. Také u konkrétních přepínaču je potřeba uvést argument (např. u -p nebo -n).
+Aplikace kontroluje u vloženého portu správnost jeho syntaxe a rozmezí, ve kterém se hodnota portu může pohybovat. Také u určitých přepínačů je potřeba uvést argument (např. u -p nebo -n).
 
 ---
 
