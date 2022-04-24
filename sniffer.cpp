@@ -256,6 +256,9 @@ int main (int argc, char **argv)
 
 
   const struct ether_header *ethernet; /* The ethernet header */
+  const struct ether_arp *arp;
+  const struct iphdr *ipv4;
+  // const struct ip6_hdr *ip6;
 
   std::string packInfo = "";
 
@@ -275,9 +278,80 @@ int main (int argc, char **argv)
 
     printf ("src MAC: %02X:%02X:%02X:%02X:%02X:%02X\n", ethernet->ether_shost[0], ethernet->ether_shost[1], ethernet->ether_shost[2], ethernet->ether_shost[3], ethernet->ether_shost[4], ethernet->ether_shost[5]);
     printf ("dst MAC: %02X:%02X:%02X:%02X:%02X:%02X\n", ethernet->ether_dhost[0], ethernet->ether_dhost[1], ethernet->ether_dhost[2], ethernet->ether_dhost[3], ethernet->ether_dhost[4], ethernet->ether_dhost[5]);
-  
-    if (ethernet->ether_type == ntohs(ETHERTYPE_ARP))
-      printf("Je to arp!\n");
+
+    printf ("frame length: %db\n", header.len);
+
+    if (ethernet->ether_type == ntohs(ETHERTYPE_ARP)) // ARP
+    {
+      arp = (struct ether_arp*)(packet + 14);
+      //printf ("%d.%d.%d.%d.%d.%d\n", arp->arp_sha[0], arp->arp_sha[1], arp->arp_sha[2], arp->arp_sha[3], arp->arp_sha[4], arp->arp_sha[5]);
+
+      char ip_adress[64];
+
+      inet_ntop(AF_INET, &(arp->arp_spa), ip_adress, 64);
+
+      printf ("src IP: %s\n", ip_adress);
+
+      inet_ntop(AF_INET, &(arp->arp_tpa), ip_adress, 64);
+
+      printf ("dst IP: %s\n", ip_adress);
+    }
+
+    else if (ethernet->ether_type == ntohs(ETHERTYPE_IP)) // IP
+    {
+      printf ("Jedná se o IP protokol\n");
+      ipv4 = (struct iphdr*)(packet + 14);
+      
+      char ip_adress[64];
+
+      inet_ntop(AF_INET, &(ipv4->saddr), ip_adress, 64);
+
+      printf ("src IP: %s\n", ip_adress);
+
+      inet_ntop(AF_INET, &(ipv4->daddr), ip_adress, 64);
+
+      printf ("dst IP: %s\n", ip_adress);
+
+      if (ipv4->protocol == 6) /// jedná se o tcp
+      {
+        
+      }
+      else if (ipv4->protocol == 17) // jedná se o udp
+      {
+
+      }
+      else
+      {
+        printf("Neznámý protokol u IP");
+        exit(0);
+      }
+    }
+
+    else if (ethernet->ether_type == ntohs(ETHERTYPE_IPV6)) // IPv6
+    {
+      printf ("Jedná se o IPv6 protokol\n");
+    }
+
+    // Vypsání dat
+    std::string printableChar = "";
+    printf("\n%04X: ", 0);
+    for (bpf_u_int32 i = 0; i < header.len; i++)
+    {
+      printf("%02X ", packet[i]);
+      if (isprint((int)packet[i]))
+        printableChar += packet[i];
+      else
+        printableChar += ".";
+      if ((i+1) % 16 == 0)
+      {
+        printf("%s", printableChar.c_str());
+        printableChar = "";
+        printf("\n");
+        printf("%04X: ", i+1);
+      } 
+    }
+    printf("%s\n", printableChar.c_str());
+    
   }
 
 
