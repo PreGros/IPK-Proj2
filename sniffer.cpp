@@ -1,28 +1,223 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <getopt.h>
+#include <pcap/pcap.h>
+#include <string.h>
+#include <iostream>
+#include <arpa/inet.h>
+#include <netinet/ether.h>
+#include <netinet/ip6.h>
+#include <netinet/tcp.h>
+#include <netinet/ip_icmp.h>
+#include <sys/time.h>
+#include <netinet/udp.h>
+#include <csignal>
 
-/* Funkce pro rozeznání optional argumentu převzaná z https://cfengine.com/blog/2021/optional-arguments-with-getopt-long/ */
+using namespace std;
+
+#define IP6_HLEN 40 // velikost IPv6 hlavičky
+
+// potřeba u překladu použít flag -lpcap https://askubuntu.com/questions/582042/problem-linking-against-pcap-h
+// základní sniffer https://www.tcpdump.org/pcap.html
+
+// Globální proměnné
+pcap_t *handle;
+
+/* Pomocná struktura pro uchování příznaků */
+struct Flags
+  {
+    bool interface = true;
+    std::string interface_arg;
+    int port = -1;
+    bool tcp = false;
+    bool udp = false;
+    bool arp = false;
+    bool icmp = false;
+    int packetcount = 1;
+  };
+
+/* Makro pro rozeznání optional argumentu převzané z https://cfengine.com/blog/2021/optional-arguments-with-getopt-long/ */
 #define OPTIONAL_ARGUMENT_IS_PRESENT \
     ((optarg == NULL && optind < argc && argv[optind][0] != '-') \
      ? (bool) (optarg = argv[optind++]) \
      : (optarg != NULL))
 
-int
-main (int argc, char **argv)
+/* Funkce pro zachycení události ukončení programu CTRL+C, abych mohl dealokovat všechny naalokované zdroje  */
+void handler(int signum)
 {
+  if (handle != NULL)
+    pcap_close(handle);
+  exit(signum);
+}
 
-    
+/* Funkce pro kontrolu portu */
+int port_Check(const char *port){
+    int intPort = atoi(port);
+    for (size_t i = 0; i < strlen(port); i++) // checking if number
+    {
+        if (!isdigit(port[i]))
+        {
+            fprintf(stderr, "Špatný port!\n");
+            exit(0);
+        }
+    }
+    if (!(intPort <= 65535) || !(intPort >= 0)) // checking range
+    {
+        fprintf(stderr,"Špatný rozsah portu!\n");
+        exit(0);
+    }
+    return intPort;
+}
+
+/* Funkce pro vypsání dostupných rozhranní nebo pro kontrolu vloženého argumentu */
+bool check_Int(Flags flags)
+{
+  char errbuff[PCAP_ERRBUF_SIZE];
+  pcap_if_t *interface;
+
+  /* Nalezení a kontrola existence interface */
+  if(pcap_findalldevs(&interface, errbuff) == PCAP_ERROR)
+  {
+    fprintf(stderr,"Nebyl nalezen žádný interface!\n");
+    exit(1);
+  }
+
+  pcap_if_t *temp = interface; // pro vyčištění celého vázaného listu 
+
+  /* Vypsání dostupných interface možností */
+  if (flags.interface)
+  {
+    do
+    {
+      printf("\t%s\n", interface->name);
+      interface = interface->next;
+    } while (interface != NULL);
+
+    pcap_freealldevs(temp);
+    exit(0);
+  }
+
+  // Kontrola vloženého argumentu
+  do
+  {
+    if (flags.interface_arg == interface->name) // pokud najde shodu, argument je správně
+    {
+      pcap_freealldevs(temp);
+      return false;
+    }
+    interface = interface->next;
+  } while (interface != NULL);
+
+  pcap_freealldevs(temp);
+  return true;
+}
+
+/* Funkce pro vytvoření řetězce pro filtr podle zadaných příznaků */
+std::string determine_filter(Flags *flags)
+{
+  std::string expression = "";
+
+  if (flags->port != -1) // port je zadán
+  {
+    if (flags->tcp == true && flags->udp == true)
+      expression = "(udp and port " + std::to_string(flags->port) + ") or (tcp and port " + std::to_string(flags->port) + ")"; // udp and port X OR tcp and port X
+    else if (flags->tcp == true)
+      expression = "(tcp and port " + std::to_string(flags->port) + ")";
+    else if (flags->udp == true)
+      expression = "(udp and port " + std::to_string(flags->port) + ")";
+    else
+      expression = "(udp and port " + std::to_string(flags->port) + ") or (tcp and port " + std::to_string(flags->port) + ")";
+  }
+  else // port není zadán
+  {
+    if (flags->tcp == true && flags->udp == true)
+      expression = "udp or tcp";
+    else if (flags->tcp == true)
+      expression = "tcp";
+    else if (flags->udp == true)
+      expression = "udp";
+  }
+  
+  if (expression != "" && (flags->arp == true || flags->icmp == true))
+    expression += " or ";
+  
+  if (flags->arp == true && flags->icmp == true)
+      expression += "arp or icmp or icmp6";
+    else if (flags->arp == true)
+      expression += "arp";
+    else if (flags->icmp == true)
+      expression += "icmp or icmp6";
+
+  if (expression == "")
+  {
+    expression = "tcp or udp or arp or icmp";
+  }
+
+  return expression;
+}
+
+/* Funkce pro vypsání všech dat z paketu */
+void printData(struct pcap_pkthdr header, const u_char *packet)
+{
+  // Vypsání dat
+  std::string printableChar = "";
+  printf("\n%04X: ", 0);
+  for (bpf_u_int32 i = 0; i < header.len; i++)
+  {
+    printf("%02X ", packet[i]);
+
+    if (isprint((int)packet[i])) // Nahrazení nevypsatelných znaků tečkou
+      printableChar += packet[i];
+    else
+      printableChar += ".";
+
+    if ((i+1) % 8 == 0 && (i+1) % 16 != 0) // Přidané mezery každý osmý cyklus
+    {
+      printf(" ");
+      printableChar += " ";
+    }
+
+    if ((i+1) % 16 == 0) // Pokud již vytiskl 16 hex čísel, vytiskni jejich znakovou reprezentaci a začni na novém řádku
+    {
+      printf("%s", printableChar.c_str());
+      printableChar = "";
+      printf("\n");
+      printf("%04X: ", i+1);
+    } 
+
+    if (i+1 >= header.len) // jedná se o poslední cyklus
+    {
+      if (i+1 % 16 == 0)
+        printf("%s\n", printableChar.c_str());
+      else
+      {
+        for (bpf_u_int32 j = 0; j < 16 - (i % 16) - 1; j++)
+        {
+          printf("   "); // vytiskni 3 mezery za každou chybějící hexa číslici
+        }
+        if (16 - (i%16) - 1 > 7)
+          printf(" ");
+        printf("%s\n", printableChar.c_str());
+      }
+    }
+  }
+}
+
+int main (int argc, char **argv)
+{
+  /******************* Vstupní parametry pomocí knihovny Getopt *******************/
+  struct Flags flags;
   int c;
 
+  /* Vstupní argumenty */
   while (1)
     {
       static struct option long_options[] =
         {
           {"interface", optional_argument, 0, 'i'},
-          {"port",  no_argument,       0, 'p'},
+          {"port",  required_argument, 0, 'p'},
           {"tcp",  no_argument, 0, 't'},
-          {"udp",  optional_argument, 0, 'u'},
+          {"udp",  no_argument, 0, 'u'},
           {"arp",    no_argument, 0, 'a'},
           {"icmp",    no_argument, 0, 'c'},
           {0, 0, 0, 0}
@@ -41,36 +236,33 @@ main (int argc, char **argv)
         case 'i': // interface
             if (OPTIONAL_ARGUMENT_IS_PRESENT)
             {
-                printf ("Interface s argumentem\n");
-            }
-            else
-            {
-                printf ("Interface bez argumentu\n");
+              flags.interface = false;
+              flags.interface_arg = optarg;
             }
             break;
 
         case 'p': // port
-            printf ("Vypsal jsi port!\n");
+            flags.port = port_Check(optarg);
             break;
 
         case 't': // tcp
-            printf ("Vypsal jsi tcp!\n");
+            flags.tcp = true;
             break;
 
         case 'u': // udp
-            printf ("Vypsal jsi udp!\n");
+            flags.udp = true;
             break;
 
         case 'a': // arp
-            printf ("Vypsal jsi arp!\n");
+            flags.arp = true;
             break;
 
         case 'c': // icmp
-            printf ("Vypsal jsi icmp!\n");
+            flags.icmp = true;
             break;
 
         case 'n': // počet paketů
-            printf ("Vypsal jsi počet paketů!\n");
+            flags.packetcount = atoi(optarg);
             break;
 
         default:
@@ -78,5 +270,166 @@ main (int argc, char **argv)
         }
     }
 
-  exit (0);
+  /******************* Nastevení rozhraní, vytváření handleru a nastavení filtru *******************/
+
+  if (check_Int(flags)) // výpis a kontrola rozhránní
+  {
+    fprintf(stderr,"Zadaný argument není platným rozhraním!\n");
+    exit(0);
+  }
+
+  char errbuf[PCAP_ERRBUF_SIZE];
+
+  signal(SIGINT, handler); // zachycení událost SIGINT(CTRL+C)
+
+  handle = pcap_open_live(flags.interface_arg.c_str(), BUFSIZ, 1, 1000, errbuf); // Vytváření sniffing session
+  if (handle == NULL)
+  {
+    fprintf(stderr, "Nepodařilo se otevřít rozhraní %s: %s\n", flags.interface_arg.c_str(), errbuf);
+    exit(1);
+  }
+
+  if (pcap_datalink(handle) != DLT_EN10MB) // jestli zařízení podporuje ethernetové hlavičky
+  {
+    fprintf(stderr, "Rozhraní %s neposkytuje ethernetové hlavičky - nejsou podporovány\n", flags.interface_arg.c_str());
+    exit(1);
+  }
+
+  struct bpf_program fp;		/* The compiled filter expression */
+  std::string filter_exp = determine_filter(&flags); //determine_filter(&flags);	/* The filter expression */
+  bpf_u_int32 mask;		/* The netmask of our sniffing device */
+  bpf_u_int32 net;		/* The IP of our sniffing device */
+  struct pcap_pkthdr *header;
+	const u_char *packet;
+
+  if (pcap_lookupnet(flags.interface_arg.c_str(), &net, &mask, errbuf) == -1)
+  {
+    fprintf(stderr, "Nepodařilo se získat síťovou masku pro %s: %s\n", flags.interface_arg.c_str(), errbuf);
+    net = 0;
+    mask = 0;
+  }
+
+  if (pcap_compile(handle, &fp, filter_exp.c_str(), 0, net) == -1)
+  {
+    fprintf(stderr, "Nepodařilo se zkompilovat filtr %s: %s\n", filter_exp.c_str(), pcap_geterr(handle));
+    exit(1);
+  }
+  if (pcap_setfilter(handle, &fp) == -1)
+  {
+    fprintf(stderr, "Nepodařilo se nastavit filtr %s: %s\n", filter_exp.c_str(), pcap_geterr(handle));
+    exit(1);
+  }
+
+  pcap_freecode(&fp);
+
+  /******************* Zachytávání jednotlivých paketů a výpis jejich informací *******************/
+
+  const struct ether_header *ethernet;
+  const struct ether_arp *arp;
+  const struct iphdr *ipv4;
+  const struct ip6_hdr *ipv6;
+  struct tm * timeinfo;
+  
+  for (int i = 0; i < flags.packetcount; i++) // Vytiskni n paketů
+  {
+    pcap_next_ex(handle, &header, &packet);
+    ethernet = (struct ether_header*)(packet); // 
+
+    char res[32];
+    timeinfo = gmtime (&(header->ts.tv_sec));
+    strftime(res, sizeof(res), "%Y-%m-%dT%H:%M:%S", timeinfo); // nastavení timestamp na požadovaný formát
+    printf("timestamp: %s.%ldZ\n", res, header->ts.tv_usec);
+
+    printf ("src MAC: %02X:%02X:%02X:%02X:%02X:%02X\n", ethernet->ether_shost[0], ethernet->ether_shost[1], ethernet->ether_shost[2], ethernet->ether_shost[3], ethernet->ether_shost[4], ethernet->ether_shost[5]);
+    printf ("dst MAC: %02X:%02X:%02X:%02X:%02X:%02X\n", ethernet->ether_dhost[0], ethernet->ether_dhost[1], ethernet->ether_dhost[2], ethernet->ether_dhost[3], ethernet->ether_dhost[4], ethernet->ether_dhost[5]);
+
+    printf ("frame length: %d bytes\n", header->len); // výpis velikosti paketu
+
+    /* ARP hlavička */
+    if (ethernet->ether_type == ntohs(ETHERTYPE_ARP))
+    {
+      arp = (struct ether_arp*)(packet + ETH_HLEN); // přetypování na strukturu ether_arp, která obsahuje potřebné informace
+      char ip_adress[64];
+
+      inet_ntop(AF_INET, &(arp->arp_spa), ip_adress, 64); // převede IPv4 nebo IPv6 v bin na textovou formu (podle AF_INET nebo AF_INET6)
+      printf ("src IP: %s\n", ip_adress);
+
+      inet_ntop(AF_INET, &(arp->arp_tpa), ip_adress, 64);
+      printf ("dst IP: %s\n", ip_adress);
+    }
+
+    /* IPv4 hlavička - tcp, udp a icmp protokol*/
+    else if (ethernet->ether_type == ntohs(ETHERTYPE_IP))
+    {
+      ipv4 = (struct iphdr*)(packet + ETH_HLEN);
+      char ip_adress[64];
+
+      inet_ntop(AF_INET, &(ipv4->saddr), ip_adress, 64);
+      printf ("src IP: %s\n", ip_adress);
+
+      inet_ntop(AF_INET, &(ipv4->daddr), ip_adress, 64);
+      printf ("dst IP: %s\n", ip_adress);
+
+      if (ipv4->protocol == IPPROTO_TCP) // jedná se o tcp
+      {
+        const struct tcphdr *tcp;
+        tcp = (struct tcphdr*)(packet + ETH_HLEN + (ipv4->ihl*4));
+        printf("src port: %d\n", ntohs(tcp->th_sport));
+        printf("dst port: %d\n", ntohs(tcp->th_dport));
+      }
+      else if (ipv4->protocol == IPPROTO_UDP) // jedná se o udp
+      {
+        const struct udphdr *udp;
+        udp = (struct udphdr*)(packet + ETH_HLEN + (ipv4->ihl*4));
+        printf("src port: %d\n", ntohs(udp->uh_sport));
+        printf("dst port: %d\n", ntohs(udp->uh_dport));
+      }
+      else if (ipv4->protocol == IPPROTO_ICMP)
+      {
+        // zde by byla vyřešena část pro ICMP, ale z icmp hlavičky nejsou potřeba tisknout data
+      }
+    }
+
+    /* IPv6 hlavička - tcp, udp a icmpv6 protokol */
+    else if (ethernet->ether_type == ntohs(ETHERTYPE_IPV6)) // IPv6
+    {
+      ipv6 = (struct ip6_hdr*)(packet + ETH_HLEN);
+      char ip_adress[64];
+
+      inet_ntop(AF_INET6, &(ipv6->ip6_src), ip_adress, 64);
+      printf ("src IP: %s\n", ip_adress);
+
+      inet_ntop(AF_INET6, &(ipv6->ip6_dst), ip_adress, 64);
+      printf ("dst IP: %s\n", ip_adress);
+
+      if (ipv6->ip6_nxt == IPPROTO_TCP) // jedná se o tcp
+      {
+        const struct tcphdr *tcp;
+        tcp = (struct tcphdr*)(packet + ETH_HLEN + IP6_HLEN);
+        printf("src port: %d\n", ntohs(tcp->th_sport));
+        printf("dst port: %d\n", ntohs(tcp->th_dport));
+      }
+      else if (ipv6->ip6_nxt == IPPROTO_UDP) // jedná se o udp
+      {
+        const struct udphdr *udp;
+        udp = (struct udphdr*)(packet + ETH_HLEN + IP6_HLEN);
+        printf("src port: %d\n", ntohs(udp->uh_sport));
+        printf("dst port: %d\n", ntohs(udp->uh_dport));
+      }
+      else if (ipv6->ip6_nxt == IPPROTO_ICMPV6)
+      {
+        // zde by byla vyřešena část pro ICMPv6, ale z icmpv6 hlavičky nejsou potřeba tisknout data
+      }
+    }
+
+    printData(*header, packet); // vytisknuti dat
+    
+    printf("\n\n"); // mezera mezi packety 
+  }
+
+
+
+	/* And close the session */
+	pcap_close(handle);
+
 }
